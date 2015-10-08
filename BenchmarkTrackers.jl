@@ -12,7 +12,8 @@ export BenchmarkTracker
 # Utility Functions #
 #####################
 
-function log_benchmarks(filename::ASCIIString, benchmarks::Vector{Function})
+function run_and_log_benchmarks(filename::ASCIIString,
+                                benchmarks::Vector{Function})
     open(filename, "w") do file
         write(file, "Function,Measurement\n")
         for f in benchmarks
@@ -54,15 +55,14 @@ immutable BenchmarkTracker
                 end
             end
 
-            log = "$(sha)_benchmarks.csv"
-
             GitHubWebhooks.respond(event, sha, GitHubWebhooks.PENDING;
                                    description="Running benchmarks...",
                                    context="BenchmarkTracker")
 
+            log = "$(sha)_benchmarks.csv"
 
-            print("\tLogging benchmarks to $(log)...")
-            log_benchmarks(log, benchmarks)
+            print("\tRunning and logging benchmarks to $(log)...")
+            run_and_log_benchmarks(log, benchmarks)
             println("done.")
 
             GitHubWebhooks.respond(event, sha, GitHubWebhooks.SUCCESS;

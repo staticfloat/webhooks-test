@@ -94,27 +94,15 @@ sig_header(request::HttpCommon.Request) = request.headers["X-Hub-Signature"]
 ###############
 
 """
-An `EventClient` is created and fed to a `WebhookTracker`'s handler function
-whenever GitHub sends an event to the tracker. The `EventClient` serves as an
-interface that can be used by the handler function to easily examine and respond
-to the event. Here are the functions defined on `EventClient`:
+An `EventClient` is created and fed to a `WebhookTracker`'s `handler` function whenever GitHub sends an event to the tracker. The `EventClient` serves as an interface that can be used by the handler function to easily examine and respond to the event.
 
-    payload(event::EventClient)
-        returns the JSON payload for the event, represented as a Dict
+Some important functions defined on `EventClient` are:
 
-    respond(event::EventClient,
-            sha::AbstractString, # The commit SHA to which the status applies
-            state::StatusState;
-            description::AbstractString="",
-            context::AbstractString="default",
-            target_url::AbstractString="")
-        Use to respond to the event with a status generated
-        from the given arguments. The `state` argument must
-        take one of following values:
-            GitHubWebhooks.PENDING, GitHubWebhooks.SUCCESS,
-            GitHubWebhooks.FAILURE, GitHubWebhooks.ERROR
+- `payload`: get the data associated with an event
+- `respond`: use to respond to an event with a status
+- `kind`: determine what kind of event the client represents
 
-    kind(event::EventClient) -> The value of the X-Github-Event header
+You can read more about these functions by querying them in the REPL's help mode.
 """
 immutable EventClient
     kind::Event
@@ -127,6 +115,25 @@ immutable EventClient
     end
 end
 
+"""
+    respond(event::EventClient,
+            sha::AbstractString,
+            state::StatusState;
+            description::AbstractString="",
+            context::AbstractString="default",
+            target_url::AbstractString="")
+
+Respond to the event with a status generated from the given arguments.
+
+The `sha` argument specifies the commit associated with the status.
+
+The `state` argument must be one of following values:
+
+- `GitHubWebhooks.PENDING`
+- `GitHubWebhooks.SUCCESS`
+- `GitHubWebhooks.FAILURE`
+- `GitHubWebhooks.ERROR`
+"""
 function respond(event::EventClient, sha::AbstractString, state::StatusState;
                  description::AbstractString="",
                  context::AbstractString="default",
@@ -141,7 +148,18 @@ function respond(event::EventClient, sha::AbstractString, state::StatusState;
     return Requests.post(event.endpoint * sha; query=params, json=status)
 end
 
+"""
+    payload(event::GitHubWebhooks.EventClient)
+
+Returns the JSON payload of an event as a Dict
+"""
 payload(event::EventClient) = event.payload
+
+"""
+    kind(event::EventClient)
+
+Returns the `Event` associated with the provided `EventClient` (e.g. `PullRequestEvent`).
+"""
 kind(event::EventClient) = event.kind
 
 ##################
@@ -149,59 +167,70 @@ kind(event::EventClient) = event.kind
 ##################
 
 """
-A `WebhookTracker` is a server that handles events recieved from GitHub Webhooks
-(https://developer.github.com/webhooks/). The tracker extracts the event payload
-from the webhook payload, wraps it in an `EventClient` (use the REPL's `help`
-mode for more info on `GitHubWebhooks.EventClient`). This `EventClient` is then
-fed to the provided `handler` function that defines the tracker's response
-behavior to GitHub Events.
+A `WebhookTracker` is a server that handles events received from GitHub Webhooks (https://developer.github.com/webhooks/). When a repository's webhook catches an event and sends it to a running `WebhookTracker`, the tracker performs some basic validation and wraps the event payload in an `EventClient` (use the REPL's `help` mode for more info on `GitHubWebhooks.EventClient`). This `EventClient` is then fed to the tracker's `handler` function, which defines how the tracker responds to the event.
 
 The WebhookTracker constructor has the following signature:
 
-    WebhookTracker(handler, # callable object (function, type, etc.)
+    WebhookTracker(handler,
                    access_token::AbstractString,
+                   secret::AbstractString,
                    user_name::AbstractString,
                    repo_name::AbstractString;
                    events::Vector{GitHubWebhooks.Event}=GitHubWebhooks.Event[],
                    secret::AbstractString="")
 
+...where:
 
-Here's an example:
+- `handler`: A callable object (function, type, etc.) that takes in an `EventClient` and returns an `HttpCommon.Response`.
+- `access_token`: A GitHub access token.
+- `secret`: The secret associated with the tracked webhook.
+- `user_name`: The name of the user/organization under which the repository is stored.
+- `repo_name`: The name of the repository on which a webhook has been activated.
+- `events`: A `Vector{Event}` that contains all whitelisted events. **If the webhook sends an event that is not in this list, that event is ignored** and is not passed down the tracker's `handler` function.
 
-    ```julia
+Here's an example that demonstrates how to construct and run a `WebhookTracker` that does some really basic benchmarking on every commit and PR (the function `run_and_log_benchmarks` used below isn't actually defined, but you get the point):
+
     access_token = # token with repo permissions (DON'T HARDCODE THIS)
     mysecret = # webhook secret (DON'T HARDCODE THIS)
-    myevents = [GitHubWebhooks.PullRequestEvent] # only track PR events
+
+    myevents = [GitHubWebhooks.PullRequestEvent, GitHubWebhooks.PushEvent]
 
     tracker = WebhookTracker(access_token, mysecret,
                              "user", "repo";
                              events=myevents) do event
-        kind = GitHubWebhooks.kind(event)
         payload = GitHubWebhooks.payload(event)
+        kind = GitHubWebhooks.kind(event)
 
-        # Show payload in REPL
-        println("The webhook sent us a $(kind)! Take a look: ")
-        dump(payload)
-
-        # Respond to the PR event
-        sha = payload["head"]["sha"] # sha for the head commit
+        if kind == GitHubWebhooks.PushEvent
+            sha = payload["after"]
+        elseif kind == GitHubWebhooks.PullRequestEvent
+            if payload["action"] == "closed"
+                return HttpCommon.Response(200)
+            else
+                sha = payload["pull_request"]["head"]["sha"]
+            end
+        end
 
         GitHubWebhooks.respond(event, sha, GitHubWebhooks.PENDING;
-                               description="Doing some work on commit \$sha")
+                               description="Running benchmarks...",
+                               context="BenchmarkTracker")
 
+        log = "\$(sha)-benchmarks.csv"
 
-        result = 1 + 1 # do some kind of work (usually involving the payload)
+        print("Running and logging benchmarks to \$(log)...")
+        run_and_log_benchmarks(log)
+        println("done.")
 
-        GitHubWebhooks.respond(event, sha, GitHubWebhooks.SUCCESS,
-                               description="Here's the result: \$result")
+        GitHubWebhooks.respond(event, sha, GitHubWebhooks.SUCCESS;
+                               description="Benchmarks complete!",
+                               context="BenchmarkTracker")
 
-        # If everything went well, let's return the proper HTTP status code
-        return 200
+        return HttpCommon.Response(200)
     end
 
     # Start the tracker on port 8000
     GitHubWebhooks.run(tracker, 8000)
-    ```
+
 """
 immutable WebhookTracker
     server::HttpServer.Server
