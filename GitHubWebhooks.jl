@@ -244,7 +244,7 @@ immutable WebhookTracker
 
         authenticate(access_token)
 
-        wrapper = HttpServer.HttpHandler() do request, response
+        server = HttpServer.Server() do request, response
             try
                 if !(has_secret(request, secret))
                     return HttpCommon.Response(400, "invalid signature")
@@ -267,12 +267,12 @@ immutable WebhookTracker
             end
         end
 
-        wrapper.events["listen"] = port -> begin
+        server.http.events["listen"] = port -> begin
             println("Tracking webhook for repo $repo on $port;")
             println("Events being tracked: $events")
         end
 
-        return new(HttpServer.Server(wrapper))
+        return new(server)
     end
 end
 
