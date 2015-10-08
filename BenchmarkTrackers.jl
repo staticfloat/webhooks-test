@@ -16,7 +16,7 @@ function log_benchmarks(filename::ASCIIString, benchmarks::Vector{Function})
     open(filename, "w") do file
         write(file, "Function,Measurement\n")
         for f in benchmarks
-            result = @time f() # will use Benchmarks once API is ready
+            result = @elapsed f() # will use Benchmarks once API is ready
             write(file, "$f,$result\n")
         end
     end
