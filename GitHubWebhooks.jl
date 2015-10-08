@@ -4,10 +4,7 @@ module GitHubWebhooks
 # import/export #
 #################
 
-import HttpCommon,
-       HttpServer,
-       Requests,
-       Nettle
+import HttpCommon, HttpServer, Requests, Nettle
 
 export WebhookTracker
 
