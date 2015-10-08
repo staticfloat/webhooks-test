@@ -94,7 +94,7 @@ sig_header(request::HttpCommon.Request) = request.headers["X-Hub-Signature"]
 ###############
 
 """
-An `EventClient` is created and fed to a `WebhookTracker`'s `handler` function whenever GitHub sends an event to the tracker. The `EventClient` serves as an interface that can be used by the handler function to easily examine and respond to the event.
+An `EventClient` is created and fed to a `WebhookTracker`'s `handle` function whenever GitHub sends an event to the tracker. The `EventClient` serves as an interface that can be used by the `handle` function to easily examine and respond to the event.
 
 Some important functions defined on `EventClient` are:
 
@@ -167,11 +167,11 @@ kind(event::EventClient) = event.kind
 ##################
 
 """
-A `WebhookTracker` is a server that handles events received from GitHub Webhooks (https://developer.github.com/webhooks/). When a repository's webhook catches an event and sends it to a running `WebhookTracker`, the tracker performs some basic validation and wraps the event payload in an `EventClient` (use the REPL's `help` mode for more info on `GitHubWebhooks.EventClient`). This `EventClient` is then fed to the tracker's `handler` function, which defines how the tracker responds to the event.
+A `WebhookTracker` is a server that handles events received from GitHub Webhooks (https://developer.github.com/webhooks/). When a repository's webhook catches an event and sends it to a running `WebhookTracker`, the tracker performs some basic validation and wraps the event payload in an `EventClient` (use the REPL's `help` mode for more info on `GitHubWebhooks.EventClient`). This `EventClient` is then fed to the tracker's `handle` function, which defines how the tracker responds to the event.
 
 The WebhookTracker constructor has the following signature:
 
-    WebhookTracker(handler,
+    WebhookTracker(handle,
                    access_token::AbstractString,
                    secret::AbstractString,
                    user_name::AbstractString,
@@ -181,12 +181,12 @@ The WebhookTracker constructor has the following signature:
 
 ...where:
 
-- `handler`: A callable object (function, type, etc.) that takes in an `EventClient` and returns an `HttpCommon.Response`.
+- `handle`: A callable object (function, type, etc.) that takes in an `EventClient` and returns an `HttpCommon.Response`.
 - `access_token`: A GitHub access token.
 - `secret`: The secret associated with the tracked webhook.
 - `user_name`: The name of the user/organization under which the repository is stored.
 - `repo_name`: The name of the repository on which a webhook has been activated.
-- `events`: A `Vector{Event}` that contains all whitelisted events. **If the webhook sends an event that is not in this list, that event is ignored** and is not passed down the tracker's `handler` function.
+- `events`: A `Vector{Event}` that contains all whitelisted events. **If the webhook sends an event that is not in this list, that event is ignored** and is not passed down the tracker's `handle` function.
 
 Here's an example that demonstrates how to construct and run a `WebhookTracker` that does some really basic benchmarking on every commit and PR (the function `run_and_log_benchmarks` used below isn't actually defined, but you get the point):
 
@@ -234,7 +234,7 @@ Here's an example that demonstrates how to construct and run a `WebhookTracker` 
 """
 immutable WebhookTracker
     server::HttpServer.Server
-    function WebhookTracker(handler,
+    function WebhookTracker(handle,
                             access_token::AbstractString,
                             secret::AbstractString,
                             user_name::AbstractString,
@@ -260,7 +260,7 @@ immutable WebhookTracker
                     return HttpCommon.Response(400, "invalid repo")
                 end
 
-                return handler(EventClient(Event(request), payload, access_token))
+                return handle(EventClient(Event(request), payload, access_token))
             catch err
                 println("SERVER ERROR: $err")
                 return HttpCommon.Response(500)
