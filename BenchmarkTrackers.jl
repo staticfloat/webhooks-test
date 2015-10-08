@@ -43,18 +43,21 @@ immutable BenchmarkTracker
             payload = GitHubWebhooks.payload(event)
             kind = GitHubWebhooks.kind(event)
 
-            dump(payload)
-
-            if kind == GitHubWebhooks.PullRequestEvent
-                sha = payload["head"]
-            elseif kind == GitHubWebhooks.PushEvent
-                sha = payload["pull_request"]["head"]["sha"]
+            if kind == GitHubWebhooks.PushEvent
+                sha = payload["after"]
+            elseif kind == GitHubWebhooks.PullRequestEvent
+                if payload["action"] == "closed"
+                    return Response(200)
+                else
+                    sha = payload["pull_request"]["head"]["sha"]
+                end
             end
+
+            log = "$(sha)_benchmarks.csv"
 
             GitHubWebhooks.respond(event, sha, GitHubWebhooks.PENDING;
                                    description="Running benchmarks...")
 
-            log = "$(sha)_benchmarks.csv"
 
             print("Logging benchmarks to $(log)...")
             log_benchmarks(log, benchmarks)
