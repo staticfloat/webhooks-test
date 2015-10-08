@@ -24,42 +24,42 @@ const ERROR = StatusState("error")
 const FAILURE = StatusState("failure")
 const SUCCESS = StatusState("success")
 
-# Event "Enum" #
-#--------------#
+# EventKind "Enum" #
+#------------------#
 
-immutable Event
+immutable EventKind
     header::ASCIIString
 end
 
-Event(request::HttpCommon.Request) = Event(event_header(request))
+EventKind(request::HttpCommon.Request) = EventKind(event_header(request))
 
-Base.(:(==))(a::Event, b::Event) = a.header == b.header
+Base.(:(==))(a::EventKind, b::EventKind) = a.header == b.header
 
-const CommitCommentEvent = Event("commit_comment")
-const CreateEvent = Event("create")
-const DeleteEvent = Event("delete")
-const DeploymentEvent = Event("deployment")
-const DeploymentStatusEvent = Event("deployment_status")
-const DownloadEvent = Event("download")
-const FollowEvent = Event("follow")
-const ForkEvent = Event("fork")
-const ForkApplyEvent = Event("fork_apply")
-const GistEvent = Event("gist")
-const GollumEvent = Event("gollum")
-const IssueCommentEvent = Event("issue_comment")
-const IssuesEvent = Event("issues")
-const MemberEvent = Event("member")
-const MembershipEvent = Event("membership")
-const PageBuildEvent = Event("page_build")
-const PublicEvent = Event("public")
-const PullRequestEvent = Event("pull_request")
-const PullRequestReviewCommentEvent = Event("pull_request_review_comment")
-const PushEvent = Event("push")
-const ReleaseEvent = Event("release")
-const RepositoryEvent = Event("repository")
-const StatusEvent = Event("status")
-const TeamAddEvent = Event("team_add")
-const WatchEvent = Event("watch")
+const CommitCommentEvent = EventKind("commit_comment")
+const CreateEvent = EventKind("create")
+const DeleteEvent = EventKind("delete")
+const DeploymentEvent = EventKind("deployment")
+const DeploymentStatusEvent = EventKind("deployment_status")
+const DownloadEvent = EventKind("download")
+const FollowEvent = EventKind("follow")
+const ForkEvent = EventKind("fork")
+const ForkApplyEvent = EventKind("fork_apply")
+const GistEvent = EventKind("gist")
+const GollumEvent = EventKind("gollum")
+const IssueCommentEvent = EventKind("issue_comment")
+const IssuesEvent = EventKind("issues")
+const MemberEvent = EventKind("member")
+const MembershipEvent = EventKind("membership")
+const PageBuildEvent = EventKind("page_build")
+const PublicEvent = EventKind("public")
+const PullRequestEvent = EventKind("pull_request")
+const PullRequestReviewCommentEvent = EventKind("pull_request_review_comment")
+const PushEvent = EventKind("push")
+const ReleaseEvent = EventKind("release")
+const RepositoryEvent = EventKind("repository")
+const StatusEvent = EventKind("status")
+const TeamAddEvent = EventKind("team_add")
+const WatchEvent = EventKind("watch")
 
 # Endpoints #
 #-----------#
@@ -89,34 +89,32 @@ event_header(request::HttpCommon.Request) = request.headers["X-GitHub-Event"]
 has_sig_header(request::HttpCommon.Request) = haskey(request.headers, "X-Hub-Signature")
 sig_header(request::HttpCommon.Request) = request.headers["X-Hub-Signature"]
 
-###############
-# EventClient #
-###############
+#########
+# Event #
+#########
 
 """
-An `EventClient` is created and fed to a `WebhookTracker`'s `handle` function whenever GitHub sends an event to the tracker. The `EventClient` serves as an interface that can be used by the `handle` function to easily examine and respond to the event.
+An `Event` is created and fed to a `WebhookTracker`'s `handle` function whenever GitHub sends an event to the tracker.
 
-Some important functions defined on `EventClient` are:
+Important functions defined on `Event` are:
 
-- `payload`: get the data associated with an event
-- `respond`: use to respond to an event with a status
-- `kind`: determine what kind of event the client represents
+- `payload`: get the event's JSON payload
+- `respond`: respond to an event via GitHub's Status API
+- `kind`: determine the kind of the event (e.g. `PushEvent`, `PullRequestEvent`, etc.)
 
 You can read more about these functions by querying them in the REPL's help mode.
 """
-immutable EventClient
-    kind::Event
+immutable Event
+    kind::EventKind
     payload::Dict
     endpoint::AbstractString
     access_token::AbstractString
-    function EventClient(kind::Event, payload::Dict, access_token::AbstractString)
-        endpoint = "$(API_ENDPOINT)repos/$(repo_full_name(payload))/statuses/"
-        return new(kind, payload, endpoint, access_token)
-    end
 end
 
+Event(request::HttpCommon.Request, args...) = Event(EventKind(request), args...)
+
 """
-    respond(event::EventClient,
+    respond(event::Event,
             sha::AbstractString,
             state::StatusState;
             description::AbstractString="",
@@ -134,7 +132,7 @@ The `state` argument must be one of following values:
 - `GitHubWebhooks.FAILURE`
 - `GitHubWebhooks.ERROR`
 """
-function respond(event::EventClient, sha::AbstractString, state::StatusState;
+function respond(event::Event, sha::AbstractString, state::StatusState;
                  description::AbstractString="",
                  context::AbstractString="default",
                  target_url::AbstractString="")
@@ -149,25 +147,25 @@ function respond(event::EventClient, sha::AbstractString, state::StatusState;
 end
 
 """
-    payload(event::GitHubWebhooks.EventClient)
+    payload(event::GitHubWebhooks.Event)
 
 Returns the JSON payload of an event as a Dict
 """
-payload(event::EventClient) = event.payload
+payload(event::Event) = event.payload
 
 """
-    kind(event::EventClient)
+    kind(event::Event)
 
-Returns the `Event` associated with the provided `EventClient` (e.g. `PullRequestEvent`).
+Returns the `EventKind` associated with the provided `Event` (e.g. `PullRequestEvent`).
 """
-kind(event::EventClient) = event.kind
+kind(event::Event) = event.kind
 
 ##################
 # WebhookTracker #
 ##################
 
 """
-A `WebhookTracker` is a server that handles events received from GitHub Webhooks (https://developer.github.com/webhooks/). When a repository's webhook catches an event and sends it to a running `WebhookTracker`, the tracker performs some basic validation and wraps the event payload in an `EventClient` (use the REPL's `help` mode for more info on `GitHubWebhooks.EventClient`). This `EventClient` is then fed to the tracker's `handle` function, which defines how the tracker responds to the event.
+A `WebhookTracker` is a server that handles events received from GitHub Webhooks (https://developer.github.com/webhooks/). When a repository's webhook catches an event and sends it to a running `WebhookTracker`, the tracker performs some basic validation and wraps the event payload in an `Event` (use the REPL's `help` mode for more info on `GitHubWebhooks.Event`). This `Event` is then fed to the tracker's `handle` function, which defines how the tracker responds to the event.
 
 The WebhookTracker constructor has the following signature:
 
@@ -176,17 +174,17 @@ The WebhookTracker constructor has the following signature:
                    secret::AbstractString,
                    user_name::AbstractString,
                    repo_name::AbstractString;
-                   events::Vector{GitHubWebhooks.Event}=GitHubWebhooks.Event[],
+                   events::Vector{GitHubWebhooks.EventKind}=GitHubWebhooks.EventKind[],
                    secret::AbstractString="")
 
 ...where:
 
-- `handle`: A callable object (function, type, etc.) that takes in an `EventClient` and returns an `HttpCommon.Response`.
+- `handle`: A callable object (function, type, etc.) that takes in an `Event` and returns an `HttpCommon.Response`.
 - `access_token`: A GitHub access token.
 - `secret`: The secret associated with the tracked webhook.
 - `user_name`: The name of the user/organization under which the repository is stored.
 - `repo_name`: The name of the repository on which a webhook has been activated.
-- `events`: A `Vector{Event}` that contains all whitelisted events. **If the webhook sends an event that is not in this list, that event is ignored** and is not passed down the tracker's `handle` function.
+- `events`: A `Vector{EventKind}` that contains all whitelisted events. **If the webhook sends an event that is not in this list, that event is ignored** and is not passed down the tracker's `handle` function.
 
 Here's an example that demonstrates how to construct and run a `WebhookTracker` that does some really basic benchmarking on every commit and PR (the function `run_and_log_benchmarks` used below isn't actually defined, but you get the point):
 
@@ -239,8 +237,9 @@ immutable WebhookTracker
                             secret::AbstractString,
                             user_name::AbstractString,
                             repo_name::AbstractString;
-                            events::Vector{Event}=Event[])
+                            events::Vector{EventKind}=EventKind[])
         repo = user_name * "/" * repo_name
+        status_endpoint = "$(API_ENDPOINT)repos/$(repo)/statuses/"
 
         authenticate(access_token)
 
@@ -260,7 +259,9 @@ immutable WebhookTracker
                     return HttpCommon.Response(400, "invalid repo")
                 end
 
-                return handle(EventClient(Event(request), payload, access_token))
+                event = Event(request, payload, status_endpoint, access_token)
+
+                return handle(event)
             catch err
                 println("SERVER ERROR: $err")
                 return HttpCommon.Response(500)
@@ -289,9 +290,9 @@ function has_secret(request::HttpCommon.Request, secret::AbstractString)
     return has_sig_header(request) && sig_header(request) == secret_sha
 end
 
-function has_event(request::HttpCommon.Request, events::Vector{Event})
+function has_event(request::HttpCommon.Request, events::Vector{EventKind})
     return (has_event_header(request) &&
-            (isempty(events) || in(Event(request), events)))
+            (isempty(events) || in(EventKind(request), events)))
 end
 
 function from_repo(payload::Dict, repo::AbstractString)
