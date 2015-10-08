@@ -16,6 +16,7 @@ function log_benchmarks(filename::ASCIIString, benchmarks::Vector{Function})
     open(filename, "w") do file
         write(file, "Function,Measurement\n")
         for f in benchmarks
+            tic()
             result = @elapsed f() # will use Benchmarks once API is ready
             write(file, "$f,$result\n")
         end
@@ -47,7 +48,7 @@ immutable BenchmarkTracker
                 sha = payload["after"]
             elseif kind == GitHubWebhooks.PullRequestEvent
                 if payload["action"] == "closed"
-                    return Response(200)
+                    return HttpCommon.Response(200)
                 else
                     sha = payload["pull_request"]["head"]["sha"]
                 end
@@ -56,15 +57,17 @@ immutable BenchmarkTracker
             log = "$(sha)_benchmarks.csv"
 
             GitHubWebhooks.respond(event, sha, GitHubWebhooks.PENDING;
-                                   description="Running benchmarks...")
+                                   description="Running benchmarks...",
+                                   context="BenchmarkTracker")
 
 
             print("Logging benchmarks to $(log)...")
             log_benchmarks(log, benchmarks)
             println("done.")
 
-            GitHubWebhooks.respond(event, sha, GitHubWebhooks.SUCCESS,
-                                   description="Benchmarks complete!")
+            GitHubWebhooks.respond(event, sha, GitHubWebhooks.SUCCESS;
+                                   description="Benchmarks complete!",
+                                   context="BenchmarkTracker")
 
             return HttpCommon.Response(200)
         end
