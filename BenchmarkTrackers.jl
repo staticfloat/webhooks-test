@@ -61,7 +61,7 @@ immutable BenchmarkTracker
                                    context="BenchmarkTracker")
 
 
-            print("Logging benchmarks to $(log)...")
+            print("\tLogging benchmarks to $(log)...")
             log_benchmarks(log, benchmarks)
             println("done.")
 
